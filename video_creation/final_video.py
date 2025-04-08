@@ -11,7 +11,7 @@ from typing import Dict, Final, Tuple
 
 import ffmpeg
 import translators
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageOps
 from rich.console import Console
 from rich.progress import track
 
@@ -109,60 +109,96 @@ def prepare_background(reddit_id: str, W: int, H: int) -> str:
 
 
 def create_fancy_thumbnail(image, text, text_color, padding, wrap=35):
-    print_step(f"Creating fancy thumbnail for: {text}")
-    font_title_size = 47
-    font = ImageFont.truetype(os.path.join("fonts", "Roboto-Bold.ttf"), font_title_size)
-    image_width, image_height = image.size
-    lines = textwrap.wrap(text, width=wrap)
-    y = (
-        (image_height / 2)
-        - (((getheight(font, text) + (len(lines) * padding) / len(lines)) * len(lines)) / 2)
-        + 30
-    )
-    draw = ImageDraw.Draw(image)
+    print_step(f"Creating Reddit-style thumbnail for: {text}")
+    
+    try:
+        # Create a new image with dark background (Reddit dark mode)
+        post_size = (1080, 1920)  # Match the expected dimensions
+        post_image = Image.new('RGBA', post_size, (26, 26, 27, 255))  # Reddit dark mode background
+        
+        # Calculate the Reddit post area size (centered in the larger image)
+        reddit_post_width = 800
+        reddit_post_height = 500
+        reddit_post = Image.new('RGBA', (reddit_post_width, reddit_post_height), (26, 26, 27, 255))
+        
+        # Open and resize workplace image to a circular icon
+        workplace_image = Image.open("assets/workplace.jpg")
+        icon_size = (32, 32)  # Reddit-style icon size
+        workplace_image = workplace_image.resize(icon_size)
+        
+        # Create a circular mask for the icon
+        mask = Image.new('L', icon_size, 0)
+        draw_mask = ImageDraw.Draw(mask)
+        draw_mask.ellipse((0, 0) + icon_size, fill=255)
+        circular_icon = ImageOps.fit(workplace_image, mask.size, centering=(0.5, 0.5))
+        circular_icon.putalpha(mask)
+        
+        # Draw on the Reddit post area
+        draw = ImageDraw.Draw(reddit_post)
+        
+        # Load fonts
+        font_small = ImageFont.truetype(os.path.join("fonts", "Roboto-Regular.ttf"), 13)
+        font_title = ImageFont.truetype(os.path.join("fonts", "Roboto-Medium.ttf"), 20)
+        font_body = ImageFont.truetype(os.path.join("fonts", "Roboto-Regular.ttf"), 14)
+        
+        # Colors
+        text_gray = (215, 218, 220)  # Reddit dark mode text color
+        secondary_gray = (129, 131, 132)  # Reddit dark mode secondary text
+        
+        # Header section
+        icon_position = (16, 16)
+        reddit_post.paste(circular_icon, icon_position, circular_icon)
+        
+        # Subreddit and metadata
+        subreddit = settings.config["reddit"]["thread"]["subreddit"]
+        draw.text((56, 16), f"r/{subreddit}", font=font_small, fill=text_gray)
+        draw.text((150, 16), "• Posted now", font=font_small, fill=secondary_gray)
+        draw.text((56, 32), "Posted by u/RedditBot", font=font_small, fill=secondary_gray)
+        
+        # Title (with word wrap)
+        title_x = 16
+        title_y = 70
+        
+        # Word wrap for title
+        words = text.split()
+        lines = []
+        current_line = []
+        max_width = reddit_post_width - 32  # Account for padding
 
-    username_font = ImageFont.truetype(os.path.join("fonts", "Roboto-Bold.ttf"), 30)
-    draw.text(
-        (205, 825),
-        settings.config["settings"]["channel_name"],
-        font=username_font,
-        fill=text_color,
-        align="left",
-    )
+        for word in words:
+            test_line = ' '.join(current_line + [word])
+            bbox = draw.textbbox((0, 0), test_line, font=font_title)
+            if bbox[2] <= max_width:
+                current_line.append(word)
+            else:
+                lines.append(' '.join(current_line))
+                current_line = [word]
+        lines.append(' '.join(current_line))
 
-    if len(lines) == 3:
-        lines = textwrap.wrap(text, width=wrap + 10)
-        font_title_size = 40
-        font = ImageFont.truetype(os.path.join("fonts", "Roboto-Bold.ttf"), font_title_size)
-        y = (
-            (image_height / 2)
-            - (((getheight(font, text) + (len(lines) * padding) / len(lines)) * len(lines)) / 2)
-            + 35
-        )
-    elif len(lines) == 4:
-        lines = textwrap.wrap(text, width=wrap + 10)
-        font_title_size = 35
-        font = ImageFont.truetype(os.path.join("fonts", "Roboto-Bold.ttf"), font_title_size)
-        y = (
-            (image_height / 2)
-            - (((getheight(font, text) + (len(lines) * padding) / len(lines)) * len(lines)) / 2)
-            + 40
-        )
-    elif len(lines) > 4:
-        lines = textwrap.wrap(text, width=wrap + 10)
-        font_title_size = 30
-        font = ImageFont.truetype(os.path.join("fonts", "Roboto-Bold.ttf"), font_title_size)
-        y = (
-            (image_height / 2)
-            - (((getheight(font, text) + (len(lines) * padding) / len(lines)) * len(lines)) / 2)
-            + 30
-        )
-
-    for line in lines:
-        draw.text((120, y), line, font=font, fill=text_color, align="left")
-        y += getheight(font, line) + padding
-
-    return image
+        # Draw title
+        for i, line in enumerate(lines):
+            draw.text((title_x, title_y + i*25), line, font=font_title, fill=text_gray)
+        
+        # Add interaction elements at the bottom
+        interaction_y = title_y + (len(lines) * 25) + 50
+        draw.text((20, interaction_y), "↑", font=font_small, fill=secondary_gray)
+        draw.text((40, interaction_y), "1.2k", font=font_small, fill=secondary_gray)
+        draw.text((80, interaction_y), "↓", font=font_small, fill=secondary_gray)
+        draw.text((140, interaction_y), "💬 234", font=font_small, fill=secondary_gray)
+        
+        # Calculate position to center the Reddit post in the larger image
+        paste_x = (post_size[0] - reddit_post_width) // 2
+        paste_y = (post_size[1] - reddit_post_height) // 2
+        
+        # Paste the Reddit post onto the larger image
+        post_image.paste(reddit_post, (paste_x, paste_y))
+        
+        return post_image
+        
+    except Exception as e:
+        print_substep(f"Error creating thumbnail: {str(e)}")
+        # If there's an error, return the original template as fallback
+        return image
 
 
 def merge_background_audio(audio: ffmpeg, reddit_id: str):
@@ -264,7 +300,10 @@ def make_final_video(
 
     # Credits to tim (beingbored)
     # get the title_template image and draw a text in the middle part of it with the title of the thread
-    title_template = Image.open("assets/title_template.png")
+    # Comment out or remove the original title template loading
+    # title_template = Image.open("assets/title_template.png")
+    # Instead, create a blank canvas
+    title_template = Image.new('RGBA', (1080, 1920), (0, 0, 0, 0))
 
     title = reddit_obj["thread_title"]
 

@@ -5,8 +5,10 @@ from os import name
 from pathlib import Path
 from subprocess import Popen
 from typing import NoReturn
+import time
 
 from prawcore import ResponseException
+from playwright.sync_api import sync_playwright
 
 from reddit.subreddit import get_subreddit_threads
 from utils import settings
@@ -47,15 +49,25 @@ def main(POST_ID=None) -> None:
     global redditid, reddit_object
     reddit_object = get_subreddit_threads(POST_ID)
     redditid = id(reddit_object)
+    
+    # Get content length and number of comments
     length, number_of_comments = save_text_to_mp3(reddit_object)
     length = math.ceil(length)
+    
+    # Limit number of comments to 5 (0 through 4)
+    number_of_comments = min(number_of_comments, 5)
+    print_step(f"Processing {number_of_comments} comments")
+    
     get_screenshots_of_reddit_posts(reddit_object, number_of_comments)
+    
+    # Background config
     bg_config = {
-        "video": get_background_config("video"),
-        "audio": get_background_config("audio"),
+        "video": ("local", "Minecraft.mp4", "test", "center"),
+        "audio": ("local", "no-audio.mp3", "none")
     }
-    download_background_video(bg_config["video"])
-    download_background_audio(bg_config["audio"])
+    
+    settings.config["settings"]["background"]["background_audio_volume"] = 0
+    
     chop_background(bg_config, length, reddit_object)
     make_final_video(number_of_comments, length, reddit_object, bg_config)
 

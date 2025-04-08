@@ -76,9 +76,9 @@ def get_background_config(mode: str):
 def download_background_video(background_config: Tuple[str, str, str, Any]):
     """Downloads the background/s video from YouTube."""
     Path("./assets/backgrounds/video/").mkdir(parents=True, exist_ok=True)
-    # note: make sure the file name doesn't include an - in it
     uri, filename, credit, _ = background_config
-    if Path(f"assets/backgrounds/video/{credit}-{filename}").is_file():
+    # Ensure it checks for the correct filename
+    if Path(f"assets/backgrounds/video/{filename}").is_file():
         return
     print_step(
         "We need to download the backgrounds videos. they are fairly large but it's only done once. 😎"
@@ -87,7 +87,7 @@ def download_background_video(background_config: Tuple[str, str, str, Any]):
     print_substep(f"Downloading {filename} from {uri}")
     ydl_opts = {
         "format": "bestvideo[height<=1080][ext=mp4]",
-        "outtmpl": f"assets/backgrounds/video/{credit}-{filename}",
+        "outtmpl": f"assets/backgrounds/video/{filename}",
         "retries": 10,
     }
 
@@ -101,7 +101,7 @@ def download_background_audio(background_config: Tuple[str, str, str]):
     Path("./assets/backgrounds/audio/").mkdir(parents=True, exist_ok=True)
     # note: make sure the file name doesn't include an - in it
     uri, filename, credit = background_config
-    if Path(f"assets/backgrounds/audio/{credit}-{filename}").is_file():
+    if Path(f"assets/backgrounds/video/{filename}").is_file():
         return
     print_step(
         "We need to download the backgrounds audio. they are fairly large but it's only done once. 😎"
@@ -109,7 +109,7 @@ def download_background_audio(background_config: Tuple[str, str, str]):
     print_substep("Downloading the backgrounds audio... please be patient 🙏 ")
     print_substep(f"Downloading {filename} from {uri}")
     ydl_opts = {
-        "outtmpl": f"./assets/backgrounds/audio/{credit}-{filename}",
+        "outtmpl": f"./assets/backgrounds/audio/{filename}",
         "format": "bestaudio/best",
         "extract_audio": True,
     }
@@ -142,7 +142,7 @@ def chop_background(background_config: Dict[str, Tuple], video_length: int, redd
         background_audio.write_audiofile(f"assets/temp/{id}/background.mp3")
 
     print_step("Finding a spot in the backgrounds video to chop...✂️")
-    video_choice = f"{background_config['video'][2]}-{background_config['video'][1]}"
+    video_choice = background_config['video'][1]
     background_video = VideoFileClip(f"assets/backgrounds/video/{video_choice}")
     start_time_video, end_time_video = get_start_and_end_times(
         video_length, background_video.duration

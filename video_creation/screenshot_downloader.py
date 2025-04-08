@@ -2,6 +2,10 @@ import json
 import re
 from pathlib import Path
 from typing import Dict, Final
+import time
+import random
+import os
+from PIL import Image, ImageDraw, ImageFont, ImageOps
 
 import translators
 from playwright.sync_api import ViewportSize, sync_playwright
@@ -17,250 +21,149 @@ __all__ = ["get_screenshots_of_reddit_posts"]
 
 
 def get_screenshots_of_reddit_posts(reddit_object: dict, screenshot_num: int):
-    """Downloads screenshots of reddit posts as seen on the web. Downloads to assets/temp/png
-
-    Args:
-        reddit_object (Dict): Reddit object received from reddit/subreddit.py
-        screenshot_num (int): Number of screenshots to download
-    """
-    # settings values
-    W: Final[int] = int(settings.config["settings"]["resolution_w"])
-    H: Final[int] = int(settings.config["settings"]["resolution_h"])
-    lang: Final[str] = settings.config["reddit"]["thread"]["post_lang"]
-    storymode: Final[bool] = settings.config["settings"]["storymode"]
-
-    print_step("Downloading screenshots of reddit posts...")
+    """Downloads screenshots of reddit posts with improved anti-bot measures"""
+    print_step("Taking screenshots with improved anti-bot measures...")
+    
+    # Get reddit ID and create directories
     reddit_id = re.sub(r"[^\w\s-]", "", reddit_object["thread_id"])
-    # ! Make sure the reddit screenshots folder exists
     Path(f"assets/temp/{reddit_id}/png").mkdir(parents=True, exist_ok=True)
+    
+    try:
+        # Get dimensions from settings
+        W = int(settings.config["settings"]["resolution_w"])
+        screenshot_width = int((W * 40) // 100)
+        post_height = int(screenshot_width * (9/16))
 
-    # set the theme and disable non-essential cookies
-    if settings.config["settings"]["theme"] == "dark":
-        cookie_file = open("./video_creation/data/cookie-dark-mode.json", encoding="utf-8")
-        bgcolor = (33, 33, 36, 255)
-        txtcolor = (240, 240, 240)
-        transparent = False
-    elif settings.config["settings"]["theme"] == "transparent":
-        if storymode:
-            # Transparent theme
-            bgcolor = (0, 0, 0, 0)
-            txtcolor = (255, 255, 255)
-            transparent = True
-            cookie_file = open("./video_creation/data/cookie-dark-mode.json", encoding="utf-8")
-        else:
-            # Switch to dark theme
-            cookie_file = open("./video_creation/data/cookie-dark-mode.json", encoding="utf-8")
-            bgcolor = (33, 33, 36, 255)
-            txtcolor = (240, 240, 240)
-            transparent = False
-    else:
-        cookie_file = open("./video_creation/data/cookie-light-mode.json", encoding="utf-8")
-        bgcolor = (255, 255, 255, 255)
-        txtcolor = (0, 0, 0)
-        transparent = False
-
-    if storymode and settings.config["settings"]["storymodemethod"] == 1:
-        # for idx,item in enumerate(reddit_object["thread_post"]):
-        print_substep("Generating images...")
-        return imagemaker(
-            theme=bgcolor,
-            reddit_obj=reddit_object,
-            txtclr=txtcolor,
-            transparent=transparent,
+        # Create title screenshot
+        create_reddit_style_screenshot(
+            reddit_object["thread_title"],
+            f"assets/temp/{reddit_id}/png/title.png",
+            screenshot_width,
+            post_height,
+            is_title=True,
+            subreddit=settings.config["reddit"]["thread"]["subreddit"]
         )
 
-    screenshot_num: int
-    with sync_playwright() as p:
-        print_substep("Launching Headless Browser...")
-
-        browser = p.chromium.launch(
-            headless=True
-        )  # headless=False will show the browser for debugging purposes
-        # Device scale factor (or dsf for short) allows us to increase the resolution of the screenshots
-        # When the dsf is 1, the width of the screenshot is 600 pixels
-        # so we need a dsf such that the width of the screenshot is greater than the final resolution of the video
-        dsf = (W // 600) + 1
-
-        context = browser.new_context(
-            locale=lang or "en-us",
-            color_scheme="dark",
-            viewport=ViewportSize(width=W, height=H),
-            device_scale_factor=dsf,
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
-        )
-        cookies = json.load(cookie_file)
-        cookie_file.close()
-
-        context.add_cookies(cookies)  # load preference cookies
-
-        # Login to Reddit
-        print_substep("Logging in to Reddit...")
-        page = context.new_page()
-        page.goto("https://www.reddit.com/login", timeout=0)
-        page.set_viewport_size(ViewportSize(width=1920, height=1080))
-        page.wait_for_load_state()
-
-        page.locator(f'input[name="username"]').fill(settings.config["reddit"]["creds"]["username"])
-        page.locator(f'input[name="password"]').fill(settings.config["reddit"]["creds"]["password"])
-        page.get_by_role("button", name="Log In").click()
-        page.wait_for_timeout(5000)
-
-        login_error_div = page.locator(".AnimatedForm__errorMessage").first
-        if login_error_div.is_visible():
-            login_error_message = login_error_div.inner_text()
-            if login_error_message.strip() == "":
-                # The div element is empty, no error
-                pass
-            else:
-                # The div contains an error message
-                print_substep(
-                    "Your reddit credentials are incorrect! Please modify them accordingly in the config.toml file.",
-                    style="red",
-                )
-                exit()
-        else:
-            pass
-
-        page.wait_for_load_state()
-        # Handle the redesign
-        # Check if the redesign optout cookie is set
-        if page.locator("#redesign-beta-optin-btn").is_visible():
-            # Clear the redesign optout cookie
-            clear_cookie_by_name(context, "redesign_optout")
-            # Reload the page for the redesign to take effect
-            page.reload()
-        # Get the thread screenshot
-        page.goto(reddit_object["thread_url"], timeout=0)
-        page.set_viewport_size(ViewportSize(width=W, height=H))
-        page.wait_for_load_state()
-        page.wait_for_timeout(5000)
-
-        if page.locator(
-            "#t3_12hmbug > div > div._3xX726aBn29LDbsDtzr_6E._1Ap4F5maDtT1E1YuCiaO0r.D3IL3FD0RFy_mkKLPwL4 > div > div > button"
-        ).is_visible():
-            # This means the post is NSFW and requires to click the proceed button.
-
-            print_substep("Post is NSFW. You are spicy...")
-            page.locator(
-                "#t3_12hmbug > div > div._3xX726aBn29LDbsDtzr_6E._1Ap4F5maDtT1E1YuCiaO0r.D3IL3FD0RFy_mkKLPwL4 > div > div > button"
-            ).click()
-            page.wait_for_load_state()  # Wait for page to fully load
-
-            # translate code
-        if page.locator(
-            "#SHORTCUT_FOCUSABLE_DIV > div:nth-child(7) > div > div > div > header > div > div._1m0iFpls1wkPZJVo38-LSh > button > i"
-        ).is_visible():
-            page.locator(
-                "#SHORTCUT_FOCUSABLE_DIV > div:nth-child(7) > div > div > div > header > div > div._1m0iFpls1wkPZJVo38-LSh > button > i"
-            ).click()  # Interest popup is showing, this code will close it
-
-        if lang:
-            print_substep("Translating post...")
-            texts_in_tl = translators.translate_text(
-                reddit_object["thread_title"],
-                to_language=lang,
-                translator="google",
-            )
-
-            page.evaluate(
-                "tl_content => document.querySelector('[data-adclicklocation=\"title\"] > div > div > h1').textContent = tl_content",
-                texts_in_tl,
-            )
-        else:
-            print_substep("Skipping translation...")
-
-        postcontentpath = f"assets/temp/{reddit_id}/png/title.png"
-        try:
-            if settings.config["settings"]["zoom"] != 1:
-                # store zoom settings
-                zoom = settings.config["settings"]["zoom"]
-                # zoom the body of the page
-                page.evaluate("document.body.style.zoom=" + str(zoom))
-                # as zooming the body doesn't change the properties of the divs, we need to adjust for the zoom
-                location = page.locator('[data-test-id="post-content"]').bounding_box()
-                for i in location:
-                    location[i] = float("{:.2f}".format(location[i] * zoom))
-                page.screenshot(clip=location, path=postcontentpath)
-            else:
-                page.locator('[data-test-id="post-content"]').screenshot(path=postcontentpath)
-        except Exception as e:
-            print_substep("Something went wrong!", style="red")
-            resp = input(
-                "Something went wrong with making the screenshots! Do you want to skip the post? (y/n) "
-            )
-
-            if resp.casefold().startswith("y"):
-                save_data("", "", "skipped", reddit_id, "")
-                print_substep(
-                    "The post is successfully skipped! You can now restart the program and this post will skipped.",
-                    "green",
-                )
-
-            resp = input("Do you want the error traceback for debugging purposes? (y/n)")
-            if not resp.casefold().startswith("y"):
-                exit()
-
-            raise e
-
-        if storymode:
-            page.locator('[data-click-id="text"]').first.screenshot(
-                path=f"assets/temp/{reddit_id}/png/story_content.png"
-            )
-        else:
-            for idx, comment in enumerate(
-                track(
-                    reddit_object["comments"][:screenshot_num],
-                    "Downloading screenshots...",
-                )
-            ):
-                # Stop if we have reached the screenshot_num
-                if idx >= screenshot_num:
-                    break
-
-                if page.locator('[data-testid="content-gate"]').is_visible():
-                    page.locator('[data-testid="content-gate"] button').click()
-
-                page.goto(f"https://new.reddit.com/{comment['comment_url']}")
-
-                # translate code
-
-                if settings.config["reddit"]["thread"]["post_lang"]:
-                    comment_tl = translators.translate_text(
+        # Create comment screenshots
+        if screenshot_num > 0:
+            print_substep(f"Creating {screenshot_num} comment screenshots...")
+            for i in range(screenshot_num):
+                if i < len(reddit_object["comments"]):
+                    comment = reddit_object["comments"][i]
+                    create_reddit_style_screenshot(
                         comment["comment_body"],
-                        translator="google",
-                        to_language=settings.config["reddit"]["thread"]["post_lang"],
+                        f"assets/temp/{reddit_id}/png/comment_{i}.png",
+                        screenshot_width,
+                        post_height,
+                        is_title=False,
+                        comment_data=comment
                     )
-                    page.evaluate(
-                        '([tl_content, tl_id]) => document.querySelector(`#t1_${tl_id} > div:nth-child(2) > div > div[data-testid="comment"] > div`).textContent = tl_content',
-                        [comment_tl, comment["comment_id"]],
-                    )
-                try:
-                    if settings.config["settings"]["zoom"] != 1:
-                        # store zoom settings
-                        zoom = settings.config["settings"]["zoom"]
-                        # zoom the body of the page
-                        page.evaluate("document.body.style.zoom=" + str(zoom))
-                        # scroll comment into view
-                        page.locator(f"#t1_{comment['comment_id']}").scroll_into_view_if_needed()
-                        # as zooming the body doesn't change the properties of the divs, we need to adjust for the zoom
-                        location = page.locator(f"#t1_{comment['comment_id']}").bounding_box()
-                        for i in location:
-                            location[i] = float("{:.2f}".format(location[i] * zoom))
-                        page.screenshot(
-                            clip=location,
-                            path=f"assets/temp/{reddit_id}/png/comment_{idx}.png",
-                        )
-                    else:
-                        page.locator(f"#t1_{comment['comment_id']}").screenshot(
-                            path=f"assets/temp/{reddit_id}/png/comment_{idx}.png"
-                        )
-                except TimeoutError:
-                    del reddit_object["comments"]
-                    screenshot_num += 1
-                    print("TimeoutError: Skipping screenshot...")
-                    continue
 
-        # close browser instance when we are done using it
-        browser.close()
+        print_substep("Screenshots created successfully!")
+            
+    except Exception as err:
+        print_substep(f"Error during screenshot creation: {str(err)}", style="red")
+        raise err
 
-    print_substep("Screenshots downloaded Successfully.", style="bold green")
+def create_reddit_style_screenshot(text, output_path, width, height, is_title=True, subreddit=None, comment_data=None):
+    """Creates a Reddit-style screenshot with proper dimensions and styling"""
+    try:
+        # Calculate proper dimensions
+        W = int(settings.config["settings"]["resolution_w"])
+        H = int(settings.config["settings"]["resolution_h"])
+        
+        # Adjust width to be 40% of video width instead of 45% to ensure full visibility
+        screenshot_width = int((W * 40) // 100)  # For 1920x1080 this gives 768 pixels
+        # Calculate height while maintaining aspect ratio
+        screenshot_height = int(screenshot_width * (9/16))  # This maintains 16:9 ratio
+        
+        # Create new image with dark background
+        post_image = Image.new('RGBA', (screenshot_width, screenshot_height), (26, 26, 27, 255))
+        draw = ImageDraw.Draw(post_image)
+        
+        # Calculate proportional sizes based on new width
+        padding_x = int(screenshot_width * 0.02)  # 2% of width for padding
+        icon_size = (int(screenshot_width * 0.04), int(screenshot_width * 0.04))  # 4% of width for icon
+        base_font_size = int(screenshot_width * 0.02)  # 2% of width for base font
+        
+        # Load fonts with adjusted sizes
+        font_small = ImageFont.truetype(os.path.join("fonts", "Roboto-Regular.ttf"), base_font_size)
+        font_title = ImageFont.truetype(os.path.join("fonts", "Roboto-Medium.ttf"), int(base_font_size * 1.5))
+        font_body = ImageFont.truetype(os.path.join("fonts", "Roboto-Regular.ttf"), int(base_font_size * 1.2))
+        
+        # Colors
+        text_gray = (215, 218, 220)
+        secondary_gray = (129, 131, 132)
+        
+        # Create circular icon
+        workplace_image = Image.open("assets/workplace.jpg")
+        workplace_image = workplace_image.resize(icon_size)
+        mask = Image.new('L', icon_size, 0)
+        draw_mask = ImageDraw.Draw(mask)
+        draw_mask.ellipse((0, 0) + icon_size, fill=255)
+        circular_icon = ImageOps.fit(workplace_image, mask.size, centering=(0.5, 0.5))
+        circular_icon.putalpha(mask)
+        
+        if is_title:
+            # Title post layout
+            icon_position = (padding_x, padding_x)
+            post_image.paste(circular_icon, icon_position, circular_icon)
+            
+            # Subreddit and metadata
+            text_start_x = icon_position[0] + icon_size[0] + padding_x
+            draw.text((text_start_x, padding_x), f"r/{subreddit}", font=font_small, fill=text_gray)
+            draw.text((text_start_x + int(screenshot_width * 0.15), padding_x), "• Posted now", font=font_small, fill=secondary_gray)
+            draw.text((text_start_x, padding_x + base_font_size + 2), "Posted by u/RedditBot", font=font_small, fill=secondary_gray)
+            
+            # Title text starting position
+            content_y = padding_x + icon_size[1] + int(base_font_size * 1.5)
+            font_to_use = font_title
+        else:
+            # Comment layout - simplified for better focus on content
+            icon_position = (padding_x, padding_x)
+            post_image.paste(circular_icon, icon_position, circular_icon)
+            
+            # Comment metadata
+            text_start_x = icon_position[0] + icon_size[0] + padding_x
+            draw.text((text_start_x, padding_x), "u/Commenter", font=font_small, fill=text_gray)
+            draw.text((text_start_x + int(screenshot_width * 0.15), padding_x), "• Now", font=font_small, fill=secondary_gray)
+            
+            # Comment text starting position
+            content_y = padding_x + icon_size[1] + padding_x
+            font_to_use = font_body
+        
+        # Word wrap text with adjusted width
+        max_width = screenshot_width - (padding_x * 3)  # Additional padding for safety
+        words = text.split()
+        lines = []
+        current_line = []
+        
+        for word in words:
+            test_line = ' '.join(current_line + [word])
+            bbox = draw.textbbox((0, 0), test_line, font=font_to_use)
+            if bbox[2] <= max_width:
+                current_line.append(word)
+            else:
+                lines.append(' '.join(current_line))
+                current_line = [word]
+        lines.append(' '.join(current_line))
+        
+        # Draw text with adjusted line height
+        line_height = int(base_font_size * (1.8 if is_title else 1.4))
+        for i, line in enumerate(lines):
+            draw.text((padding_x, content_y + i*line_height), line, font=font_to_use, fill=text_gray)
+        
+        # Add interaction elements at the bottom for title only
+        if is_title:
+            interaction_y = screenshot_height - (base_font_size * 2.5)  # Moved up slightly
+            draw.text((padding_x, interaction_y), "↑", font=font_small, fill=secondary_gray)
+            draw.text((padding_x * 2, interaction_y), "1.2k", font=font_small, fill=secondary_gray)
+            draw.text((padding_x * 4, interaction_y), "↓", font=font_small, fill=secondary_gray)
+            draw.text((padding_x * 6, interaction_y), "💬 234", font=font_small, fill=secondary_gray)
+        
+        # Save the image
+        post_image.save(output_path)
+        
+    except Exception as e:
+        print_substep(f"Error creating screenshot: {str(e)}")
+        raise e

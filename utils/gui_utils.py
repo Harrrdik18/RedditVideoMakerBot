@@ -1,6 +1,8 @@
 import json
 import re
 from pathlib import Path
+import shutil
+import os
 
 import toml
 import tomlkit
@@ -210,3 +212,18 @@ def add_background(youtube_uri, filename, citation, position):
     flash(f'Added "{citation}-{filename}.mp4" as a new background video!')
 
     return
+
+
+def setup_directories(reddit_id):
+    """Create necessary directories and copy files to the correct locations"""
+    # Create directories
+    Path(f"assets/temp/{reddit_id}/png").mkdir(parents=True, exist_ok=True)
+    Path("assets/backgrounds/video").mkdir(parents=True, exist_ok=True)
+    
+    # Copy example.png to the correct locations
+    shutil.copy("example.png", f"assets/temp/{reddit_id}/png/title.png")
+    shutil.copy("example.png", f"assets/temp/{reddit_id}/png/comment_0.png")
+    
+    # Copy test.mp4 to backgrounds directory
+    if not os.path.exists("assets/backgrounds/video/test.mp4"):
+        shutil.copy("test.mp4", "assets/backgrounds/video/test.mp4")
