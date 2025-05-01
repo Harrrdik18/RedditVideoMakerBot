@@ -27,7 +27,7 @@ def get_screenshots_of_reddit_posts(reddit_object: dict, screenshot_num: int):
     # Get reddit ID and create directories
     reddit_id = re.sub(r"[^\w\s-]", "", reddit_object["thread_id"])
     Path(f"assets/temp/{reddit_id}/png").mkdir(parents=True, exist_ok=True)
-    
+
     try:
         # Get dimensions from settings
         screenshot_width = int(700)
@@ -69,6 +69,7 @@ def create_reddit_style_screenshot(text, output_path, width, height, is_title=Tr
     try:
         # Calculate padding - only horizontal padding
         horizontal_padding = int(width * 0.12)  # 8% of width for side padding
+        inner_padding = int(width * 0.04)  # 4% of width for inner spacing
         
         # Increase only the width to accommodate padding
         total_width = width + (horizontal_padding * 2)
@@ -101,35 +102,35 @@ def create_reddit_style_screenshot(text, output_path, width, height, is_title=Tr
         circular_icon.putalpha(mask)
         
         if is_title:
-            # Title post layout with only horizontal padding
-            icon_position = (horizontal_padding, 16)  # Keep original vertical position
+            # Title post layout with horizontal padding
+            icon_position = (horizontal_padding, inner_padding)  # Only horizontal padding
             post_image.paste(circular_icon, icon_position, circular_icon)
             
             # Subreddit and metadata
-            text_start_x = icon_position[0] + icon_size[0] + 16
-            draw.text((text_start_x, 16), f"r/{subreddit}", font=font_small, fill=text_gray)
-            draw.text((text_start_x + int(width * 0.15), 16), "• Posted now", font=font_small, fill=secondary_gray)
-            draw.text((text_start_x, 16 + base_font_size + 2), "Posted by u/RedditBot", font=font_small, fill=secondary_gray)
+            text_start_x = icon_position[0] + icon_size[0] + inner_padding
+            draw.text((text_start_x, inner_padding), f"r/{subreddit}", font=font_small, fill=text_gray)
+            draw.text((text_start_x + int(width * 0.15), inner_padding), "• Posted now", font=font_small, fill=secondary_gray)
+            draw.text((text_start_x, inner_padding + base_font_size + 2), "Posted by u/RedditBot", font=font_small, fill=secondary_gray)
             
             # Title text starting position
-            content_y = 16 + icon_size[1] + int(base_font_size * 1.5)
+            content_y = inner_padding + icon_size[1] + int(base_font_size * 1.5)
             font_to_use = font_title
         else:
-            # Comment layout
-            icon_position = (horizontal_padding, 16)  # Keep original vertical position
+            # Comment layout with horizontal padding
+            icon_position = (horizontal_padding, inner_padding)  # Only horizontal padding
             post_image.paste(circular_icon, icon_position, circular_icon)
             
             # Comment metadata
-            text_start_x = icon_position[0] + icon_size[0] + 16
-            draw.text((text_start_x, 16), "u/Commenter", font=font_small, fill=text_gray)
-            draw.text((text_start_x + int(width * 0.15), 16), "• Now", font=font_small, fill=secondary_gray)
+            text_start_x = icon_position[0] + icon_size[0] + inner_padding
+            draw.text((text_start_x, inner_padding), "u/Commenter", font=font_small, fill=text_gray)
+            draw.text((text_start_x + int(width * 0.15), inner_padding), "• Now", font=font_small, fill=secondary_gray)
             
             # Comment text starting position
-            content_y = 16 + icon_size[1] + 16
+            content_y = inner_padding + icon_size[1] + inner_padding
             font_to_use = font_body
         
         # Word wrap text with adjusted width for padding
-        max_width = width - 32  # Keep original text width constraints
+        max_width = width - (inner_padding * 3)  # Account for padding
         words = text.split()
         lines = []
         current_line = []
@@ -144,7 +145,7 @@ def create_reddit_style_screenshot(text, output_path, width, height, is_title=Tr
                 current_line = [word]
         lines.append(' '.join(current_line))
         
-        # Draw text with horizontal padding only
+        # Draw text
         for i, line in enumerate(lines):
             draw.text(
                 (horizontal_padding, content_y + (i * int(base_font_size * 1.5))),
