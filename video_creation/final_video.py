@@ -113,13 +113,13 @@ def create_fancy_thumbnail(image, text, text_color, padding, wrap=35):
     
     try:
         # Create a new image with dark background (Reddit dark mode)
-        post_size = (1080, 1920)  # Match the expected dimensions
-        post_image = Image.new('RGBA', post_size, (26, 26, 27, 255))  # Reddit dark mode background
+        post_size = (700, 150)
+        post_image = Image.new('RGBA', post_size, (255, 255, 255, 255))  # Reddit dark mode background
         
         # Calculate the Reddit post area size (centered in the larger image)
-        reddit_post_width = 800
-        reddit_post_height = 500
-        reddit_post = Image.new('RGBA', (reddit_post_width, reddit_post_height), (26, 26, 27, 255))
+        reddit_post_width = 600
+        reddit_post_height = 150
+        reddit_post = Image.new('RGBA', (reddit_post_width, reddit_post_height), (255, 255, 255, 255))
         
         # Open and resize workplace image to a circular icon
         workplace_image = Image.open("assets/workplace.jpg")
@@ -137,13 +137,13 @@ def create_fancy_thumbnail(image, text, text_color, padding, wrap=35):
         draw = ImageDraw.Draw(reddit_post)
         
         # Load fonts
-        font_small = ImageFont.truetype(os.path.join("fonts", "Roboto-Regular.ttf"), 13)
+        font_small = ImageFont.truetype(os.path.join("fonts", "Roboto-Regular.ttf"), 16)
         font_title = ImageFont.truetype(os.path.join("fonts", "Roboto-Medium.ttf"), 20)
         font_body = ImageFont.truetype(os.path.join("fonts", "Roboto-Regular.ttf"), 14)
         
         # Colors
-        text_gray = (215, 218, 220)  # Reddit dark mode text color
-        secondary_gray = (129, 131, 132)  # Reddit dark mode secondary text
+        text_gray = (26, 26, 27)
+        secondary_gray = (26, 26, 27)  # Reddit dark mode secondary text
         
         # Header section
         icon_position = (16, 16)
@@ -151,9 +151,8 @@ def create_fancy_thumbnail(image, text, text_color, padding, wrap=35):
         
         # Subreddit and metadata
         subreddit = settings.config["reddit"]["thread"]["subreddit"]
-        draw.text((56, 16), f"r/{subreddit}", font=font_small, fill=text_gray)
-        draw.text((150, 16), "• Posted now", font=font_small, fill=secondary_gray)
-        draw.text((56, 32), "Posted by u/RedditBot", font=font_small, fill=secondary_gray)
+        draw.text((56, 19), f"r/{subreddit}", font=font_small, fill=text_gray)
+
         
         # Title (with word wrap)
         title_x = 16

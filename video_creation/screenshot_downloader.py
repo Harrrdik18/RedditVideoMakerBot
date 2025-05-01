@@ -30,9 +30,8 @@ def get_screenshots_of_reddit_posts(reddit_object: dict, screenshot_num: int):
     
     try:
         # Get dimensions from settings
-        W = int(settings.config["settings"]["resolution_w"])
-        screenshot_width = int((W * 40) // 100)
-        post_height = int(screenshot_width * (9/16))
+        screenshot_width = int(700)
+        post_height = int(150)
 
         # Create title screenshot
         create_reddit_style_screenshot(
@@ -68,36 +67,33 @@ def get_screenshots_of_reddit_posts(reddit_object: dict, screenshot_num: int):
 def create_reddit_style_screenshot(text, output_path, width, height, is_title=True, subreddit=None, comment_data=None):
     """Creates a Reddit-style screenshot with proper dimensions and styling"""
     try:
-        # Calculate proper dimensions
-        W = int(settings.config["settings"]["resolution_w"])
-        H = int(settings.config["settings"]["resolution_h"])
+        # Calculate padding - only horizontal padding
+        horizontal_padding = int(width * 0.12)  # 8% of width for side padding
         
-        # Adjust width to be 40% of video width instead of 45% to ensure full visibility
-        screenshot_width = int((W * 40) // 100)  # For 1920x1080 this gives 768 pixels
-        # Calculate height while maintaining aspect ratio
-        screenshot_height = int(screenshot_width * (9/16))  # This maintains 16:9 ratio
+        # Increase only the width to accommodate padding
+        total_width = width + (horizontal_padding * 2)
+        total_height = height  # Keep original height
         
-        # Create new image with dark background
-        post_image = Image.new('RGBA', (screenshot_width, screenshot_height), (26, 26, 27, 255))
+        # Create new image with padding
+        post_image = Image.new('RGBA', (total_width, total_height), (255, 255, 255, 255))
         draw = ImageDraw.Draw(post_image)
         
-        # Calculate proportional sizes based on new width
-        padding_x = int(screenshot_width * 0.02)  # 2% of width for padding
-        icon_size = (int(screenshot_width * 0.04), int(screenshot_width * 0.04))  # 4% of width for icon
-        base_font_size = int(screenshot_width * 0.02)  # 2% of width for base font
-        
-        # Load fonts with adjusted sizes
+        # Load fonts
+        base_font_size = int(width * 0.02)  # 2% of width for base font
         font_small = ImageFont.truetype(os.path.join("fonts", "Roboto-Regular.ttf"), base_font_size)
         font_title = ImageFont.truetype(os.path.join("fonts", "Roboto-Medium.ttf"), int(base_font_size * 1.5))
         font_body = ImageFont.truetype(os.path.join("fonts", "Roboto-Regular.ttf"), int(base_font_size * 1.2))
         
         # Colors
-        text_gray = (215, 218, 220)
+        text_gray = (26, 26, 27)
         secondary_gray = (129, 131, 132)
         
         # Create circular icon
         workplace_image = Image.open("assets/workplace.jpg")
+        icon_size = (int(width * 0.04), int(width * 0.04))  # 4% of width for icon
         workplace_image = workplace_image.resize(icon_size)
+        
+        # Create circular mask
         mask = Image.new('L', icon_size, 0)
         draw_mask = ImageDraw.Draw(mask)
         draw_mask.ellipse((0, 0) + icon_size, fill=255)
@@ -105,35 +101,35 @@ def create_reddit_style_screenshot(text, output_path, width, height, is_title=Tr
         circular_icon.putalpha(mask)
         
         if is_title:
-            # Title post layout
-            icon_position = (padding_x, padding_x)
+            # Title post layout with only horizontal padding
+            icon_position = (horizontal_padding, 16)  # Keep original vertical position
             post_image.paste(circular_icon, icon_position, circular_icon)
             
             # Subreddit and metadata
-            text_start_x = icon_position[0] + icon_size[0] + padding_x
-            draw.text((text_start_x, padding_x), f"r/{subreddit}", font=font_small, fill=text_gray)
-            draw.text((text_start_x + int(screenshot_width * 0.15), padding_x), "• Posted now", font=font_small, fill=secondary_gray)
-            draw.text((text_start_x, padding_x + base_font_size + 2), "Posted by u/RedditBot", font=font_small, fill=secondary_gray)
+            text_start_x = icon_position[0] + icon_size[0] + 16
+            draw.text((text_start_x, 16), f"r/{subreddit}", font=font_small, fill=text_gray)
+            draw.text((text_start_x + int(width * 0.15), 16), "• Posted now", font=font_small, fill=secondary_gray)
+            draw.text((text_start_x, 16 + base_font_size + 2), "Posted by u/RedditBot", font=font_small, fill=secondary_gray)
             
             # Title text starting position
-            content_y = padding_x + icon_size[1] + int(base_font_size * 1.5)
+            content_y = 16 + icon_size[1] + int(base_font_size * 1.5)
             font_to_use = font_title
         else:
-            # Comment layout - simplified for better focus on content
-            icon_position = (padding_x, padding_x)
+            # Comment layout
+            icon_position = (horizontal_padding, 16)  # Keep original vertical position
             post_image.paste(circular_icon, icon_position, circular_icon)
             
             # Comment metadata
-            text_start_x = icon_position[0] + icon_size[0] + padding_x
-            draw.text((text_start_x, padding_x), "u/Commenter", font=font_small, fill=text_gray)
-            draw.text((text_start_x + int(screenshot_width * 0.15), padding_x), "• Now", font=font_small, fill=secondary_gray)
+            text_start_x = icon_position[0] + icon_size[0] + 16
+            draw.text((text_start_x, 16), "u/Commenter", font=font_small, fill=text_gray)
+            draw.text((text_start_x + int(width * 0.15), 16), "• Now", font=font_small, fill=secondary_gray)
             
             # Comment text starting position
-            content_y = padding_x + icon_size[1] + padding_x
+            content_y = 16 + icon_size[1] + 16
             font_to_use = font_body
         
-        # Word wrap text with adjusted width
-        max_width = screenshot_width - (padding_x * 3)  # Additional padding for safety
+        # Word wrap text with adjusted width for padding
+        max_width = width - 32  # Keep original text width constraints
         words = text.split()
         lines = []
         current_line = []
@@ -148,22 +144,19 @@ def create_reddit_style_screenshot(text, output_path, width, height, is_title=Tr
                 current_line = [word]
         lines.append(' '.join(current_line))
         
-        # Draw text with adjusted line height
-        line_height = int(base_font_size * (1.8 if is_title else 1.4))
+        # Draw text with horizontal padding only
         for i, line in enumerate(lines):
-            draw.text((padding_x, content_y + i*line_height), line, font=font_to_use, fill=text_gray)
-        
-        # Add interaction elements at the bottom for title only
-        if is_title:
-            interaction_y = screenshot_height - (base_font_size * 2.5)  # Moved up slightly
-            draw.text((padding_x, interaction_y), "↑", font=font_small, fill=secondary_gray)
-            draw.text((padding_x * 2, interaction_y), "1.2k", font=font_small, fill=secondary_gray)
-            draw.text((padding_x * 4, interaction_y), "↓", font=font_small, fill=secondary_gray)
-            draw.text((padding_x * 6, interaction_y), "💬 234", font=font_small, fill=secondary_gray)
+            draw.text(
+                (horizontal_padding, content_y + (i * int(base_font_size * 1.5))),
+                line,
+                font=font_to_use,
+                fill=text_gray
+            )
         
         # Save the image
         post_image.save(output_path)
+        return post_image
         
     except Exception as e:
         print_substep(f"Error creating screenshot: {str(e)}")
-        raise e
+        return None
