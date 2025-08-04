@@ -302,19 +302,23 @@ def make_final_video(
     # Comment out or remove the original title template loading
     # title_template = Image.open("assets/title_template.png")
     # Instead, create a blank canvas
-    title_template = Image.new('RGBA', (1080, 1920), (0, 0, 0, 0))
+    # Use the same screenshot function for the title as for comments, for visual consistency
+    from video_creation.screenshot_downloader import create_reddit_style_screenshot
 
     title = reddit_obj["thread_title"]
-
     title = name_normalize(title)
 
-    font_color = "#000000"
-    padding = 5
+    # Generate the title screenshot using the same function as comments
+    create_reddit_style_screenshot(
+        text=title,
+        output_path=f"assets/temp/{reddit_id}/png/title.png",
+        width=700,
+        height=180,
+        is_title=True,
+        subreddit=settings.config["reddit"]["thread"]["subreddit"],
+        comment_data=None
+    )
 
-    # create_fancy_thumbnail(image, text, text_color, padding
-    title_img = create_fancy_thumbnail(title_template, title, font_color, padding)
-
-    title_img.save(f"assets/temp/{reddit_id}/png/title.png")
     image_clips.insert(
         0,
         ffmpeg.input(f"assets/temp/{reddit_id}/png/title.png")["v"].filter(
