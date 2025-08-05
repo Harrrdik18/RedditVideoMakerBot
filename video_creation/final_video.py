@@ -482,9 +482,19 @@ def make_final_video(
     print_substep("[DEBUG FONTCONFIG] Completed drawing background credit text with ffmpeg.drawtext (line 481)")
     # Overlay the post/title image at the start of the video for 3 seconds
     post_img_path = f"assets/temp/{reddit_id}/png/title.png"
-    screenshot_width = int((W * 45) // 100)
-    post_img = ffmpeg.input(post_img_path)["v"].filter("scale", screenshot_width, -1)
-    # Center the overlay
+    # Margin: 5% of width/height
+    margin_x = int(W * 0.05)
+    margin_y = int(H * 0.05)
+    overlay_w = int(W * 0.75)
+    overlay_h = -1  # maintain aspect ratio
+
+    # Fade-in: 0.7s
+    print_substep(f"[DEBUG] Overlaying post image: {post_img_path} at margin ({margin_x}, {margin_y})")
+    overlay_w = int(W * 0.35)
+    post_img = (
+        ffmpeg.input(post_img_path)["v"]
+        .filter("scale", overlay_w, -1)
+    )
     background_clip = background_clip.overlay(
         post_img,
         enable="between(t,0,3)",
