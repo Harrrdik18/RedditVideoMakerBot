@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Dict, Final, Tuple
 
 import ffmpeg
+import os.path
 import translators
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 from rich.console import Console
@@ -290,8 +291,14 @@ def make_final_video(
     console.log(f"[bold green] Video Will Be: {length} Seconds Long")
 
     screenshot_width = int((W * 45) // 100)
-    audio = ffmpeg.input(f"assets/temp/{reddit_id}/audio.mp3")
-    final_audio = merge_background_audio(audio, reddit_id)
+    audio_path = f"assets/temp/{reddit_id}/audio.mp3"
+    if os.path.exists(audio_path):
+        audio = ffmpeg.input(audio_path)
+        final_audio = merge_background_audio(audio, reddit_id)
+    else:
+        # Use silent audio if no audio file exists
+        print_substep("No audio found, using silent audio track.")
+        final_audio = ffmpeg.input(f"anullsrc=r=44100:cl=mono", f="lavfi").output("pipe:", t=length, format="wav")["a"]
 
     image_clips = list()
 
@@ -303,20 +310,15 @@ def make_final_video(
     # title_template = Image.open("assets/title_template.png")
     # Instead, create a blank canvas
     # Use the same screenshot function for the title as for comments, for visual consistency
-    from video_creation.screenshot_downloader import create_reddit_style_screenshot
+    from video_creation.screenshot_downloader import create_reddit_style_screenshot, get_screenshots_of_reddit_posts
 
     title = reddit_obj["thread_title"]
     title = name_normalize(title)
 
-    # Generate the title screenshot using the same function as comments
-    create_reddit_style_screenshot(
-        text=title,
-        output_path=f"assets/temp/{reddit_id}/png/title.png",
-        width=700,
-        height=180,
-        is_title=True,
-        subreddit=settings.config["reddit"]["thread"]["subreddit"],
-        comment_data=None
+    # Generate all screenshots (title and chunked comments)
+    get_screenshots_of_reddit_posts(
+        reddit_object=reddit_obj,
+        screenshot_num=number_of_clips
     )
 
     image_clips.insert(
@@ -367,24 +369,55 @@ def make_final_video(
                 )
                 current_time += audio_clips_durations[i]
     else:
-        for i in range(0, number_of_clips + 1):
-            image_clips.append(
-                ffmpeg.input(f"assets/temp/{reddit_id}/png/comment_{i}.png")["v"].filter(
-                    "scale", screenshot_width, -1
-                )
-            )
-            image_overlay = image_clips[i].filter("colorchannelmixer", aa=opacity)
-            assert (
-                audio_clips_durations is not None
-            ), "Please make a GitHub issue if you see this. Ping @JasonLovesDoggo on GitHub."
-            background_clip = background_clip.overlay(
-                image_overlay,
-                enable=f"between(t,{current_time},{current_time + audio_clips_durations[i]})",
-                x="(main_w-overlay_w)/2",
-                y="(main_h-overlay_h)/2",
-            )
-            current_time += audio_clips_durations[i]
+        # --- New logic for margin and chunked comment display with fade transitions ---
+        margin_x = int(W * 0.05)
+        margin_y = int(H * 0.05)
+        # Post (title) image: fade in, hold, fade out
+        post_img_path = f"assets/temp/{reddit_id}/png/title.png"
+        post_duration = 3  # seconds to display post
+        fade_duration = 0.5  # seconds for fade in/out
 
+        # Get background video size
+        probe = ffmpeg.probe(f"assets/temp/{reddit_id}/background_noaudio.mp4")
+        video_stream = next((stream for stream in probe["streams"] if stream["codec_type"] == "video"), None)
+        bg_w = int(video_stream["width"])
+        bg_h = int(video_stream["height"])
+        # DEBUG: Overlay solid red color for first 5 seconds, full screen, top-left
+        # red_img = ffmpeg.input(f"color=c=red:s={bg_w}x{bg_h}:d=5:r=60", f="lavfi")["v"]
+        # background_clip = background_clip.overlay(
+        #     red_img,
+        #     enable=f"between(t,0,5)",
+        #     x="0",
+        #     y="0",
+        # )
+        current_time = 5  # Start comments after post
+
+        # For each comment, render each chunk as text (no card, just text) using drawtext
+        from video_creation.screenshot_downloader import split_comment_into_chunks
+        # Use a generic system font for debug
+        font_size = 48  # Adjust as needed
+        font_color = "red"  # DEBUG: Use red for visibility
+        comment_y = "(h/2)"  # DEBUG: Center vertically
+
+        for i in range(number_of_clips):
+            comment = reddit_obj["comments"][i]
+            chunks = split_comment_into_chunks(comment["comment_body"], min_words=1, max_words=3)
+            for chunk in chunks:
+                # DEBUG: Always show text for 2 seconds, no fade, use Arial system font
+                print_substep(f"[DEBUG FONTCONFIG] About to draw comment chunk text: '{chunk}' with ffmpeg.drawtext (line 407)")
+                background_clip = ffmpeg.drawtext(
+                    background_clip,
+                    text=chunk,
+                    x="(w-text_w)/2",
+                    y=comment_y,
+                    fontsize=font_size,
+                    fontcolor=font_color,
+                    fontfile=os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'fonts', 'Roboto-Black.ttf')),
+                    alpha=1,
+                    enable=f"between(t,{current_time},{current_time + 2})"
+                )
+                print_substep(f"[DEBUG FONTCONFIG] Completed drawing comment chunk text: '{chunk}' with ffmpeg.drawtext (line 417)")
+                current_time += 2
     title = re.sub(r"[^\w\s-]", "", reddit_obj["thread_title"])
     idx = re.sub(r"[^\w\s-]", "", reddit_obj["thread_id"])
     title_thumb = reddit_obj["thread_title"]
@@ -436,6 +469,7 @@ def make_final_video(
             print_substep(f"Thumbnail - Building Thumbnail in assets/temp/{reddit_id}/thumbnail.png")
 
     text = f"Background by {background_config['video'][2]}"
+    print_substep("[DEBUG FONTCONFIG] About to draw background credit text with ffmpeg.drawtext (line 472)")
     background_clip = ffmpeg.drawtext(
         background_clip,
         text=text,
@@ -443,10 +477,11 @@ def make_final_video(
         y=f"(h-text_h)",
         fontsize=5,
         fontcolor="White",
-        fontfile=os.path.join("fonts", "Roboto-Regular.ttf"),
+        fontfile=os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'fonts', 'Roboto-Black.ttf')),
     )
-    background_clip = background_clip.filter("scale", W, H)
-    print_step("Rendering the video 🎥")
+    print_substep("[DEBUG FONTCONFIG] Completed drawing background credit text with ffmpeg.drawtext (line 481)")
+    # Only render the background video, no overlays or drawtext
+    print_step("Rendering the background video only (no overlays or drawtext) for isolation test")
     from tqdm import tqdm
 
     pbar = tqdm(total=100, desc="Progress: ", bar_format="{l_bar}{bar}", unit=" %")
@@ -463,15 +498,14 @@ def make_final_video(
             path[:251] + ".mp4"
         )  # Prevent a error by limiting the path length, do not change this.
         try:
+            print_substep("[DEBUG FONTCONFIG] About to call ffmpeg.output (line 496)")
             ffmpeg.output(
                 background_clip,
-                final_audio,
                 path,
                 f="mp4",
                 **{
                     "c:v": "h264",
                     "b:v": "20M",
-                    "b:a": "192k",
                     "threads": multiprocessing.cpu_count(),
                 },
             ).overwrite_output().global_args("-progress", progress.output_file.name).run(
@@ -480,6 +514,7 @@ def make_final_video(
                 capture_stdout=False,
                 capture_stderr=False,
             )
+            print_substep("[DEBUG FONTCONFIG] Completed ffmpeg.output for background video only (line 515)")
         except ffmpeg.Error as e:
             print(e.stderr.decode("utf8"))
             exit(1)

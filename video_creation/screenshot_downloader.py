@@ -20,8 +20,24 @@ from utils.videos import save_data
 __all__ = ["get_screenshots_of_reddit_posts"]
 
 
+def split_comment_into_chunks(text, min_words=1, max_words=3):
+    """
+    Splits a comment into chunks of 1-3 words (default), for animated display.
+    Returns a list of text chunks.
+    """
+    words = text.split()
+    chunks = []
+    i = 0
+    while i < len(words):
+        chunk_size = min(max_words, len(words) - i)
+        # Optionally randomize chunk size between min_words and max_words
+        # chunk_size = random.randint(min_words, min(chunk_size, max_words))
+        chunks.append(' '.join(words[i:i+chunk_size]))
+        i += chunk_size
+    return chunks
+
 def get_screenshots_of_reddit_posts(reddit_object: dict, screenshot_num: int):
-    """Downloads screenshots of reddit posts with improved anti-bot measures"""
+    """Downloads screenshots of reddit posts with improved anti-bot measures and supports chunked comments"""
     print_step("Taking screenshots with improved anti-bot measures...")
     
     # Get reddit ID and create directories
@@ -43,20 +59,23 @@ def get_screenshots_of_reddit_posts(reddit_object: dict, screenshot_num: int):
             subreddit=settings.config["reddit"]["thread"]["subreddit"]
         )
 
-        # Create comment screenshots
+        # Create comment screenshots (chunked: 1-3 words per image)
         if screenshot_num > 0:
-            print_substep(f"Creating {screenshot_num} comment screenshots...")
+            print_substep(f"Creating {screenshot_num} comment screenshots (chunked)...")
             for i in range(screenshot_num):
                 if i < len(reddit_object["comments"]):
                     comment = reddit_object["comments"][i]
-                    create_reddit_style_screenshot(
-                        comment["comment_body"],
-                        f"assets/temp/{reddit_id}/png/comment_{i}.png",
-                        screenshot_width,
-                        post_height,
-                        is_title=False,
-                        comment_data=comment
-                    )
+                    comment_text = comment["comment_body"]
+                    chunks = split_comment_into_chunks(comment_text, min_words=1, max_words=3)
+                    for j, chunk in enumerate(chunks):
+                        create_reddit_style_screenshot(
+                            chunk,
+                            f"assets/temp/{reddit_id}/png/comment_{i}_{j}.png",
+                            screenshot_width,
+                            post_height,
+                            is_title=False,
+                            comment_data=comment
+                        )
 
         print_substep("Screenshots created successfully!")
             
@@ -186,7 +205,13 @@ def create_reddit_style_screenshot(text, output_path, width, height, is_title=Tr
             )
 
         # Save the image
-        post_image.save(output_path)
+        # Flatten to RGB with white background before saving (fixes ffmpeg overlay issues)
+        if post_image.mode in ("RGBA", "LA"):
+            bg = Image.new("RGB", post_image.size, (255, 255, 255))
+            bg.paste(post_image, mask=post_image.split()[-1])
+            bg.save(output_path)
+        else:
+            post_image.save(output_path)
         return post_image
 
     except Exception as e:

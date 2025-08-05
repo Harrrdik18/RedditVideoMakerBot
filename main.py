@@ -68,6 +68,7 @@ def main(POST_ID=None) -> None:
     
     settings.config["settings"]["background"]["background_audio_volume"] = 0
     
+    length = 10  # DEBUG: Force video to 10 seconds
     chop_background(bg_config, length, reddit_object)
     make_final_video(number_of_comments, length, reddit_object, bg_config)
 
