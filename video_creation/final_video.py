@@ -481,7 +481,29 @@ def make_final_video(
     )
     print_substep("[DEBUG FONTCONFIG] Completed drawing background credit text with ffmpeg.drawtext (line 481)")
     # Overlay the post/title image at the start of the video for 3 seconds
-    post_img_path = f"assets/temp/{reddit_id}/png/title.png"
+    # Add rounded corners to the post image before overlay
+    from PIL import Image, ImageDraw
+
+    def add_rounded_corners(input_path, output_path, radius=None, border_width=20, border_color=(255,0,0,255)):
+        img = Image.open(input_path).convert("RGBA")
+        w, h = img.size
+        if radius is None:
+            radius = min(w, h) // 6  # Less curvy: one-sixth the smallest dimension
+        # Create rounded mask
+        mask = Image.new("L", (w, h), 0)
+        draw = ImageDraw.Draw(mask)
+        draw.rounded_rectangle([(0, 0), (w, h)], radius=radius, fill=255)
+        # Create a fully transparent image
+        rounded = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+        # Paste the original image using the rounded mask as alpha
+        rounded.paste(img, (0, 0), mask)
+        rounded.save(output_path)
+
+    rounded_post_img_path = f"assets/temp/{reddit_id}/png/title_rounded.png"
+    add_rounded_corners(post_img_path, rounded_post_img_path)
+    print_substep(f"[DEBUG] Saved rounded post image with border to: {rounded_post_img_path}")
+    post_img_path = rounded_post_img_path
+    # post_img_path = f"assets/temp/{reddit_id}/png/title.png"
     # Margin: 5% of width/height
     margin_x = int(W * 0.05)
     margin_y = int(H * 0.05)
