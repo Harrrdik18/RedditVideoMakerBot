@@ -396,7 +396,9 @@ def make_final_video(
         from video_creation.screenshot_downloader import split_comment_into_chunks
         # Use a generic system font for debug
         font_size = 48  # Adjust as needed
-        font_color = "red"  # DEBUG: Use red for visibility
+        font_color = "white"  # Use white for comment text
+        font_border_color = "black"
+        font_border_width = 2
         comment_y = "(h/2)"  # DEBUG: Center vertically
 
         for i in range(number_of_clips):
@@ -413,6 +415,8 @@ def make_final_video(
                     fontsize=font_size,
                     fontcolor=font_color,
                     fontfile=os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'fonts', 'Roboto-Black.ttf')),
+                    borderw=font_border_width,
+                    bordercolor=font_border_color,
                     alpha=1,
                     enable=f"between(t,{current_time},{current_time + 2})"
                 )
