@@ -480,8 +480,19 @@ def make_final_video(
         fontfile=os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'fonts', 'Roboto-Black.ttf')),
     )
     print_substep("[DEBUG FONTCONFIG] Completed drawing background credit text with ffmpeg.drawtext (line 481)")
-    # Only render the background video, no overlays or drawtext
-    print_step("Rendering the background video only (no overlays or drawtext) for isolation test")
+    # Overlay the post/title image at the start of the video for 3 seconds
+    post_img_path = f"assets/temp/{reddit_id}/png/title.png"
+    screenshot_width = int((W * 45) // 100)
+    post_img = ffmpeg.input(post_img_path)["v"].filter("scale", screenshot_width, -1)
+    # Center the overlay
+    background_clip = background_clip.overlay(
+        post_img,
+        enable="between(t,0,3)",
+        x="(main_w-overlay_w)/2",
+        y="(main_h-overlay_h)/2"
+    )
+
+    print_step("Rendering the video with post/title overlay at start")
     from tqdm import tqdm
 
     pbar = tqdm(total=100, desc="Progress: ", bar_format="{l_bar}{bar}", unit=" %")
